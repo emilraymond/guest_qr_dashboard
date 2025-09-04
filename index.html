@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, query, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        setLogLevel('debug');
+
+        // IMPORTANT: Replace the placeholder values below with your actual Firebase config
+        const firebaseConfig = {
+            apiKey: "AIzaSyA_feMG7fruy8JP8SavztqMEq0_hhwygVI",
+            authDomain: "wedding-guest-app-76d77.firebaseapp.com",
+            projectId: "wedding-guest-app-76d77",
+            storageBucket: "wedding-guest-app-76d77.firebasestorage.app",
+            messagingSenderId: "1002898401701",
+            appId: "1:1002898401701:web:7461503d7c7bb9f8fb604c",
+            measurementId: "G-KQBS4BY8VX"
+        };
+        const appId = firebaseConfig.appId;
+
+        const VALID_PASSWORD = "P@ssw0rd!23";
+
+        let db, auth;
+        const messageBox = document.getElementById('messageBox');
+        
+        function showMessage(message, isError = false) {
+            messageBox.textContent = message;
+            messageBox.className = isError
+                ? 'mt-4 p-4 rounded-lg bg-red-100 text-red-700'
+                : 'mt-4 p-4 rounded-lg bg-green-100 text-green-700';
+            messageBox.style.display = 'block';
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (firebaseConfig.apiKey.includes('YOUR_')) {
+                showMessage("Error: Please update the Firebase configuration in the code.", true);
+                document.getElementById('loading-spinner').classList.add('hidden');
+                document.getElementById('login-section').classList.remove('hidden');
+                return;
+            }
+
+            document.getElementById('login-section').classList.add('hidden');
+            document.getElementById('app-content').classList.add('hidden');
+            document.getElementById('loading-spinner').classList.remove('hidden');
+
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                await signInAnonymously(auth);
+                console.log("Firebase initialized and signed in anonymously.");
+            } catch (error) {
+                console.error("Firebase initialization failed:", error);
+                showMessage(`Firebase initialization failed: ${error.message}. Please check your configuration.`, true);
+            } finally {
+                document.getElementById('loading-spinner').classList.add('hidden');
+                document.getElementById('login-section').classList.remove('hidden');
+            }
+        });
+
+        // Login Logic
+        document.getElementById('loginBtn').addEventListener('click', () => {
+            const passwordInput = document.getElementById('password').value;
+            
+            if (passwordInput === VALID_PASSWORD) {
+                document.getElementById('login-section').classList.add('hidden');
+                document.getElementById('app-content').classList.remove('hidden');
+                messageBox.style.display = 'none';
+                fetchGuests(); // Fetch data after successful login
+            } else {
+                showMessage("Invalid password.", true);
+            }
+        });
+
+        // Fetch guests from Firestore
+        const fetchGuests = () => {
+            const guestsCollectionPath = `/artifacts/${appId}/public/data/guests`;
+            const guestsQuery = query(collection(db, guestsCollectionPath));
+            const guestsTableBody = document.getElementById('guests-table-body');
+            const tableContainer = document.getElementById('table-container');
+
+            onSnapshot(guestsQuery, (snapshot) => {
+                tableContainer.classList.remove('hidden');
+                guestsTableBody.innerHTML = ''; // Clear existing rows
+                if (snapshot.empty) {
+                    guestsTableBody.innerHTML = '<tr><td colspan="3" class="p-3 text-sm text-center text-gray-500">No guests found.</td></tr>';
+                } else {
+                    snapshot.forEach((doc) => {
+                        const guest = doc.data();
+                        const row = document.createElement('tr');
+                        row.className = 'border-b border-gray-200 hover:bg-gray-50';
+                        row.innerHTML = `
+                            <td class="p-4 text-sm font-medium text-gray-700 whitespace-nowrap">${guest.guest_id || 'N/A'}</td>
+                            <td class="p-4 text-sm text-gray-700 whitespace-nowrap">${guest.table_number || 'N/A'}</td>
+                            <td class="p-4 text-sm text-gray-700 whitespace-nowrap">${guest.group_size || 'N/A'}</td>
+                        `;
+                        guestsTableBody.appendChild(row);
+                    });
+                }
+            }, (error) => {
+                console.error("Error fetching guests:", error);
+                showMessage("Error fetching data. Please ensure your Firestore security rules are correctly set up.", true);
+            });
+        };
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f0f4f8; }
+        .container { max-width: 600px; }
+        .section-box { background-color: #ffffff; border-radius: 1rem; box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1); }
+        .input-field { border: 1px solid #cbd5e1; padding: 0.75rem 1rem; border-radius: 0.5rem; }
+        .button-primary { background-color: #3b82f6; color: white; padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-weight: 600; }
+        .button-primary:hover { background-color: #2563eb; }
+        .loading-spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 flex items-center justify-center min-h-screen p-4">
+
+    <!-- Loading Spinner -->
+    <div id="loading-spinner" class="flex flex-col items-center justify-center space-y-4 text-center">
+        <div class="loading-spinner"></div>
+        <p class="text-gray-500">Initializing app...</p>
+    </div>
+
+    <!-- Login Section -->
+    <div id="login-section" class="hidden container mx-auto p-8 space-y-8 section-box">
+        <h1 class="text-3xl font-bold text-center text-gray-800">Admin Dashboard</h1>
+        <p class="text-gray-600 text-center">Please enter the password to view the guest list.</p>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-gray-700">Password:</label>
+                <input type="password" id="password" class="w-full input-field" placeholder="Password">
+            </div>
+            <button id="loginBtn" class="w-full button-primary">Log In</button>
+        </div>
+        <div id="messageBox" style="display:none;" class="text-center"></div>
+    </div>
+
+    <!-- Main App Content -->
+    <div id="app-content" class="hidden container mx-auto p-8 space-y-8 section-box">
+        <h1 class="text-3xl font-bold text-center text-gray-800">Guest List</h1>
+        <p class="text-gray-600 text-center">This table updates in real-time as new guests are added.</p>
+        
+        <div id="table-container" class="overflow-x-auto rounded-lg shadow-md border border-gray-200">
+            <table class="w-full table-auto divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Guest ID</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Table Number</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Group Size</th>
+                    </tr>
+                </thead>
+                <tbody id="guests-table-body" class="bg-white divide-y divide-gray-200">
+                    <!-- Guest data will be populated here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>
