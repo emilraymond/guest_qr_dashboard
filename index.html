@@ -78,22 +78,22 @@
             }
         });
 
-		// Deletes a guest document from Firestore
-		const deleteGuest = async (guestDocId) => {
-			if (!guestDocId) return showMessage("Error: Document ID is missing.", true);
+        // Deletes a guest document from Firestore
+        const deleteGuest = async (guestDocId) => {
+            if (!guestDocId) return showMessage("Error: Document ID is missing.", true);
 
-			const guestsCollectionPath = `/artifacts/${appId}/public/data/guests`;
-			const docRef = doc(db, guestsCollectionPath, guestDocId);
-			try {
+            const guestsCollectionPath = `/artifacts/${appId}/public/data/guests`;
+            const docRef = doc(db, guestsCollectionPath, guestDocId);
+            try {
                 if (confirm('Are you sure you want to delete this guest?')) {
                     await deleteDoc(docRef);
                     showMessage(`Guest with ID ${guestDocId} successfully deleted.`);
                 }
-			} catch (error) {
-				console.error("Error deleting guest:", error);
-				showMessage(`Error deleting guest: ${error.message}`, true);
-			}
-		};
+            } catch (error) {
+                console.error("Error deleting guest:", error);
+                showMessage(`Error deleting guest: ${error.message}`, true);
+            }
+        };
 
         // Edit and Save Guest
         const toggleEdit = (row, docId, guest) => {
@@ -169,6 +169,58 @@
                 };
             }
         };
+        
+        // This function builds and populates the pivot table
+        const fetchTableSummary = (guests) => {
+            const pivotTableBody = document.getElementById('pivot-table-body');
+            pivotTableBody.innerHTML = '';
+            
+            if (guests.length === 0) {
+                pivotTableBody.innerHTML = '<tr><td colspan="2" class="p-3 text-sm text-center text-gray-500">No table data available.</td></tr>';
+                return;
+            }
+
+            const tableSummary = new Map();
+
+            guests.forEach(guest => {
+                const tableNumber = guest.table_number;
+                const groupSize = guest.group_size;
+                if (tableNumber) {
+                    const currentCount = tableSummary.get(tableNumber) || 0;
+                    tableSummary.set(tableNumber, currentCount + (groupSize || 0));
+                }
+            });
+
+            const sortedTables = Array.from(tableSummary.keys()).sort((a, b) => a - b);
+            
+            sortedTables.forEach(tableNumber => {
+                const row = document.createElement('tr');
+                row.className = 'border-b border-gray-200 hover:bg-gray-50';
+
+                const tableNumCell = document.createElement('td');
+                tableNumCell.className = 'p-4 text-sm font-medium text-gray-700 whitespace-nowrap';
+                tableNumCell.textContent = `Table ${tableNumber}`;
+                row.appendChild(tableNumCell);
+                
+                const guestCountCell = document.createElement('td');
+                const guestCount = tableSummary.get(tableNumber);
+                guestCountCell.textContent = guestCount;
+                guestCountCell.className = 'p-4 text-sm whitespace-nowrap';
+
+                // Conditional formatting for guest count
+                if (guestCount >= 10) {
+                    guestCountCell.classList.add('text-red-500', 'font-bold');
+                } else if (guestCount >= 8) {
+                    guestCountCell.classList.add('text-orange-500', 'font-bold');
+                } else {
+                    guestCountCell.classList.add('text-gray-700');
+                }
+
+                row.appendChild(guestCountCell);
+                
+                pivotTableBody.appendChild(row);
+            });
+        };
 
         // Fetch guests from Firestore
         const fetchGuests = () => {
@@ -180,12 +232,29 @@
             onSnapshot(guestsQuery, (snapshot) => {
                 tableContainer.classList.remove('hidden');
                 guestsTableBody.innerHTML = ''; // Clear existing rows
-                if (snapshot.empty) {
+
+                let totalGroupSize = 0;
+                let maxTableNumber = 0;
+
+                const guests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                // Sort guests for Table 1
+                guests.sort((a, b) => {
+                    if (a.table_number !== b.table_number) {
+                        return (a.table_number || 0) - (b.table_number || 0);
+                    }
+                    return (a.guest_id || '').localeCompare(b.guest_id || '');
+                });
+
+                if (guests.length === 0) {
                     guestsTableBody.innerHTML = '<tr><td colspan="6" class="p-3 text-sm text-center text-gray-500">No guests found.</td></tr>';
                 } else {
-                    snapshot.forEach((doc) => {
-                        const guest = doc.data();
+                    guests.forEach((guest) => {
                         
+                        // Calculate totals
+                        totalGroupSize += guest.group_size || 0;
+                        maxTableNumber = Math.max(maxTableNumber, guest.table_number || 0);
+
                         const row = document.createElement('tr');
                         row.className = 'border-b border-gray-200 hover:bg-gray-50';
 
@@ -228,7 +297,7 @@
                         const editButton = document.createElement('button');
                         editButton.textContent = 'Edit';
                         editButton.className = 'bg-green-500 text-white py-1 px-3 rounded-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50';
-                        editButton.onclick = () => toggleEdit(row, doc.id, guest);
+                        editButton.onclick = () => toggleEdit(row, guest.id, guest);
                         editButtonCell.appendChild(editButton);
                         row.appendChild(editButtonCell);
 
@@ -238,18 +307,73 @@
                         const deleteButton = document.createElement('button');
                         deleteButton.textContent = 'Delete';
                         deleteButton.className = 'bg-red-500 text-white py-1 px-3 rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50';
-                        deleteButton.onclick = () => deleteGuest(doc.id);
+                        deleteButton.onclick = () => deleteGuest(guest.id);
                         deleteButtonCell.appendChild(deleteButton);
                         row.appendChild(deleteButtonCell);
                         
                         guestsTableBody.appendChild(row);
                     });
+                    
+                    // Add the totals row at the end
+                    const totalRow = document.createElement('tr');
+                    totalRow.className = 'bg-gray-100 font-bold border-t-2 border-gray-400';
+
+                    const totalGuestIdCell = document.createElement('td');
+                    totalGuestIdCell.className = 'p-4 text-sm text-gray-800 whitespace-nowrap';
+                    totalGuestIdCell.textContent = 'Total';
+                    totalRow.appendChild(totalGuestIdCell);
+
+                    const totalTableNumberCell = document.createElement('td');
+                    totalTableNumberCell.className = 'p-4 text-sm text-gray-800 whitespace-nowrap';
+                    totalTableNumberCell.textContent = maxTableNumber;
+                    totalRow.appendChild(totalTableNumberCell);
+
+                    const totalGroupSizeCell = document.createElement('td');
+                    totalGroupSizeCell.className = 'p-4 text-sm text-gray-800 whitespace-nowrap';
+                    totalGroupSizeCell.textContent = totalGroupSize;
+                    totalRow.appendChild(totalGroupSizeCell);
+
+                    const emptyCell1 = document.createElement('td');
+                    emptyCell1.className = 'p-4';
+                    totalRow.appendChild(emptyCell1);
+
+                    const emptyCell2 = document.createElement('td');
+                    emptyCell2.className = 'p-4';
+                    totalRow.appendChild(emptyCell2);
+                    
+                    const emptyCell3 = document.createElement('td');
+                    emptyCell3.className = 'p-4';
+                    totalRow.appendChild(emptyCell3);
+
+                    guestsTableBody.appendChild(totalRow);
                 }
+
+                // Call the new function to populate the pivot table
+                fetchTableSummary(guests);
+
             }, (error) => {
                 console.error("Error fetching guests:", error);
                 showMessage("Error fetching data. Please ensure your Firestore security rules are correctly set up.", true);
             });
         };
+        
+        // Toggle view button logic
+        document.getElementById('toggle-view-btn').addEventListener('click', () => {
+            const guestTable = document.getElementById('table-container');
+            const pivotTable = document.getElementById('pivot-table-container');
+            const button = document.getElementById('toggle-view-btn');
+
+            if (guestTable.classList.contains('hidden')) {
+                guestTable.classList.remove('hidden');
+                pivotTable.classList.add('hidden');
+                button.textContent = 'Switch to Pivot View';
+            } else {
+                guestTable.classList.add('hidden');
+                pivotTable.classList.remove('hidden');
+                button.textContent = 'Switch to Guest List';
+            }
+        });
+
     </script>
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #f0f4f8; }
@@ -293,7 +417,10 @@
     </div>
 
     <div id="app-content" class="hidden container mx-auto p-8 space-y-8 section-box">
-        <h1 class="text-3xl font-bold text-center text-gray-800">Guest List</h1>
+        <div class="flex justify-between items-center mb-4">
+            <h1 class="text-3xl font-bold text-center text-gray-800">Guest List</h1>
+            <button id="toggle-view-btn" class="bg-indigo-500 text-white py-2 px-4 rounded-md hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 text-sm">Switch to Pivot View</button>
+        </div>
         <p class="text-gray-600 text-center">This table updates in real-time as new guests are added.</p>
         
         <div id="table-container" class="overflow-x-auto rounded-lg shadow-md border border-gray-200">
@@ -309,6 +436,19 @@
                     </tr>
                 </thead>
                 <tbody id="guests-table-body" class="bg-white divide-y divide-gray-200">
+                    </tbody>
+            </table>
+        </div>
+        
+        <div id="pivot-table-container" class="hidden overflow-x-auto rounded-lg shadow-md border border-gray-200">
+            <table class="w-full table-auto divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Table Number</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Guests</th>
+                    </tr>
+                </thead>
+                <tbody id="pivot-table-body" class="bg-white divide-y divide-gray-200">
                     </tbody>
             </table>
         </div>
