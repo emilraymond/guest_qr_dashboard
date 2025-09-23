@@ -103,8 +103,9 @@
             const tableNumberCell = row.cells[1];
             const groupSizeCell = row.cells[2];
             const qrButtonCell = row.cells[3];
-            const editButtonCell = row.cells[4];
-            const deleteButtonCell = row.cells[5];
+            const invitationButtonCell = row.cells[4];
+            const editButtonCell = row.cells[5];
+            const deleteButtonCell = row.cells[6];
 
             if (isEditing) {
                 // Save changes
@@ -121,31 +122,46 @@
                     group_size: parseInt(newGroupSize)
                 };
 
-                // Check for QR code upload
-                const fileInput = qrButtonCell.querySelector('input[type="file"]');
-                if (fileInput.files.length > 0) {
-                    const file = fileInput.files[0];
-                    const reader = new FileReader();
-                    reader.onload = async (e) => {
-                        updatedData.qr_image_data = e.target.result;
-                        try {
-                            await updateDoc(docRef, updatedData);
-                            showMessage("Guest updated successfully.");
-                        } catch (error) {
-                            console.error("Error updating guest:", error);
-                            showMessage(`Error updating guest: ${error.message}`, true);
-                        }
-                    };
-                    reader.readAsDataURL(file);
-                } else {
-                    // Update without changing QR code
-                    updateDoc(docRef, updatedData)
-                        .then(() => showMessage("Guest updated successfully."))
-                        .catch(error => {
-                            console.error("Error updating guest:", error);
-                            showMessage(`Error updating guest: ${error.message}`, true);
-                        });
+                // Handle QR and Invitation image uploads
+                const qrFileInput = qrButtonCell.querySelector('input[type="file"]');
+                const invitationFileInput = invitationButtonCell.querySelector('input[type="file"]');
+                let promises = [];
+
+                if (qrFileInput && qrFileInput.files.length > 0) {
+                    promises.push(new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            updatedData.qr_image_data = e.target.result;
+                            resolve();
+                        };
+                        reader.readAsDataURL(qrFileInput.files[0]);
+                    }));
                 }
+
+                if (invitationFileInput && invitationFileInput.files.length > 0) {
+                    promises.push(new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            updatedData.invitation_image = e.target.result;
+                            resolve();
+                        };
+                        reader.readAsDataURL(invitationFileInput.files[0]);
+                    }));
+                }
+                
+                Promise.all(promises)
+                    .then(() => {
+                        updateDoc(docRef, updatedData)
+                            .then(() => showMessage("Guest updated successfully."))
+                            .catch(error => {
+                                console.error("Error updating guest:", error);
+                                showMessage(`Error updating guest: ${error.message}`, true);
+                            });
+                    })
+                    .catch(error => {
+                        console.error("Error with file reader:", error);
+                        showMessage("Error processing file uploads.", true);
+                    });
 
                 row.classList.remove('editing');
             } else {
@@ -157,6 +173,7 @@
                 groupSizeCell.innerHTML = `<input type="number" class="w-full p-1 border rounded" value="${guest.group_size || ''}">`;
                 
                 qrButtonCell.innerHTML = `<input type="file" accept="image/*" class="text-sm">`;
+                invitationButtonCell.innerHTML = `<input type="file" accept="image/*" class="text-sm">`;
 
                 editButtonCell.innerHTML = `<button class="bg-blue-500 text-white py-1 px-3 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">Save</button>`;
                 
@@ -247,7 +264,7 @@
                 });
 
                 if (guests.length === 0) {
-                    guestsTableBody.innerHTML = '<tr><td colspan="6" class="p-3 text-sm text-center text-gray-500">No guests found.</td></tr>';
+                    guestsTableBody.innerHTML = '<tr><td colspan="7" class="p-3 text-sm text-center text-gray-500">No guests found.</td></tr>';
                 } else {
                     guests.forEach((guest) => {
                         
@@ -290,6 +307,22 @@
                         
                         qrButtonCell.appendChild(showQrButton);
                         row.appendChild(qrButtonCell);
+
+                        const invitationButtonCell = document.createElement('td');
+                        invitationButtonCell.className = 'p-4 text-sm text-gray-700 whitespace-nowrap';
+
+                        const showInvitationButton = document.createElement('button');
+                        showInvitationButton.textContent = 'Show Invitation';
+                        showInvitationButton.className = 'bg-blue-500 text-white py-1 px-3 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50';
+                        showInvitationButton.onclick = () => {
+                            if (guest.invitation_image) {
+                                window.open().document.write("<img src='"+guest.invitation_image+"'/>");
+                            } else {
+                                showMessage("Invitation image not found.", true);
+                            }
+                        };
+                        invitationButtonCell.appendChild(showInvitationButton);
+                        row.appendChild(invitationButtonCell);
                         
                         const editButtonCell = document.createElement('td');
                         editButtonCell.className = 'p-4 text-sm text-gray-700 whitespace-nowrap';
@@ -344,6 +377,10 @@
                     const emptyCell3 = document.createElement('td');
                     emptyCell3.className = 'p-4';
                     totalRow.appendChild(emptyCell3);
+
+                    const emptyCell4 = document.createElement('td');
+                    emptyCell4.className = 'p-4';
+                    totalRow.appendChild(emptyCell4);
 
                     guestsTableBody.appendChild(totalRow);
                 }
@@ -431,6 +468,7 @@
                         <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Table Number</th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Group Size</th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">QR Code</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invitation</th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"></th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"></th>
                     </tr>
