@@ -29,8 +29,9 @@
         let db, auth;
         const messageBox = document.getElementById('messageBox');
         
-        // Cache for guests organized by table for the pivot view expansion
+        // Cache for guests organized by table for the pivot view and outline expansion
         let guestsByTable = new Map();
+        let tableSummary = new Map();
 
         function showMessage(message, isError = false) {
             messageBox.textContent = message;
@@ -227,9 +228,7 @@
                 
                 guests.forEach(guest => {
                     const listItem = document.createElement('li');
-                    // *** MODIFIED LINE: Include group_size in brackets ***
                     listItem.textContent = `${guest.guest_id || 'N/A'} (${guest.group_size || 0})`;
-                    // *****************************************************
                     guestList.appendChild(listItem);
                 });
 
@@ -249,9 +248,9 @@
             const pivotTableBody = document.getElementById('pivot-table-body');
             pivotTableBody.innerHTML = '';
             
-            // Reset and rebuild the cache of guests by table
+            // Reset and rebuild the cache of guests by table and tableSummary
             guestsByTable = new Map();
-            const tableSummary = new Map();
+            tableSummary = new Map(); // Global variable updated here
 
             guests.forEach(guest => {
                 const tableNumber = guest.table_number;
@@ -304,17 +303,143 @@
                 
                 pivotTableBody.appendChild(row);
             });
+            
+            // Also generate the outline view every time data is fetched/updated
+            generateVenueOutline();
         };
 
+        // Function to generate the HTML content for a single table cell in the Outline View
+        const createOutlineTableCell = (tableNumber) => {
+            const tableCell = document.createElement('td');
+            tableCell.className = 'p-2 border border-gray-300 w-1/5 align-top';
+            tableCell.style.minWidth = '120px'; // Give cells some minimum width
+
+            const count = tableSummary.get(tableNumber) || 0;
+            const guests = guestsByTable.get(tableNumber) || [];
+
+            let tableClass = 'text-gray-800 bg-white';
+            let guestListHtml = '';
+
+            // Conditional formatting for the table title block
+            if (count >= 10) {
+                tableClass = 'text-white bg-red-600';
+            } else if (count >= 8) {
+                tableClass = 'text-white bg-orange-500';
+            } else if (count > 0) {
+                tableClass = 'text-gray-800 bg-green-200';
+            } else {
+                // Empty table
+                tableClass = 'text-gray-400 bg-gray-100';
+            }
+
+            if (tableNumber > 0) {
+                // Table Title and Count
+                tableCell.innerHTML += `<div class="p-2 font-bold text-center rounded-t-md ${tableClass}">
+                    Table ${tableNumber} (${count})
+                </div>`;
+
+                // Guest List
+                if (guests.length > 0) {
+                    const listItems = guests.map(guest => `<li>${guest.guest_id || 'N/A'} (${guest.group_size || 0})</li>`).join('');
+                    guestListHtml = `<ul class="list-disc list-inside text-xs p-2 bg-gray-50 border-t border-gray-200 rounded-b-md">${listItems}</ul>`;
+                } else {
+                    guestListHtml = `<div class="p-2 text-xs text-center text-gray-500 bg-gray-50 border-t border-gray-200 rounded-b-md">Empty</div>`;
+                }
+
+                tableCell.innerHTML += guestListHtml;
+            } else {
+                // Placeholder for non-existent tables (e.g. if table count is less than 28)
+                tableCell.innerHTML += `<div class="p-4 text-xs text-center text-gray-400 bg-gray-100 rounded-md">---</div>`;
+            }
+
+            return tableCell;
+        };
+
+        // Function to generate the entire Venue Outline table
+        const generateVenueOutline = () => {
+            const outlineTableBody = document.getElementById('outline-table-body');
+            outlineTableBody.innerHTML = '';
+            
+            // Assuming max table number is 28 based on the image provided
+            const MAX_TABLES = 28; 
+            const MAX_ROWS = MAX_TABLES / 2; 
+
+            // Calculate the max table number present in the data to ensure correct rendering (e.g., if only 10 tables exist)
+            let maxPresentTable = 0;
+            tableSummary.forEach((count, tableNum) => {
+                maxPresentTable = Math.max(maxPresentTable, tableNum);
+            });
+            const actualMaxRows = Math.ceil(maxPresentTable / 2); 
+
+            // Create Stage Header Row
+            const stageRow = document.createElement('tr');
+            stageRow.innerHTML = `<td colspan="5" class="p-4 text-lg font-bold text-center bg-gray-700 text-white">Stage</td>`;
+            outlineTableBody.appendChild(stageRow);
+
+            for (let i = 1; i <= MAX_ROWS; i++) {
+                const row = document.createElement('tr');
+                row.className = 'h-full';
+
+                // Left Side - Column 1 (e.g., Table 1, 5, 9, 13, ...)
+                let leftTable1 = 1 + (i - 1) * 4;
+                row.appendChild(leftTable1 <= MAX_TABLES ? createOutlineTableCell(leftTable1) : document.createElement('td'));
+
+                // Left Side - Column 2 (e.g., Table 3, 7, 11, 15, ...)
+                let leftTable2 = 3 + (i - 1) * 4;
+                row.appendChild(leftTable2 <= MAX_TABLES ? createOutlineTableCell(leftTable2) : document.createElement('td'));
+
+                // Middle Column (Catwalk/Aisle)
+                const aisleCell = document.createElement('td');
+                aisleCell.className = 'w-1/5 border-l-2 border-r-2 border-dashed border-gray-400 bg-gray-50';
+                row.appendChild(aisleCell);
+
+                // Right Side - Column 3 (e.g., Table 2, 6, 10, 14, ...)
+                let rightTable1 = 2 + (i - 1) * 4;
+                row.appendChild(rightTable1 <= MAX_TABLES ? createOutlineTableCell(rightTable1) : document.createElement('td'));
+
+                // Right Side - Column 4 (e.g., Table 4, 8, 12, 16, ...)
+                let rightTable2 = 4 + (i - 1) * 4;
+                row.appendChild(rightTable2 <= MAX_TABLES ? createOutlineTableCell(rightTable2) : document.createElement('td'));
+                
+                // Only append rows up to the maximum required for the layout image
+                outlineTableBody.appendChild(row);
+            }
+        };
+
+        // Master function to hide all views and show the selected one
+        const switchView = (viewId) => {
+            const views = ['table-container', 'pivot-table-container', 'outline-container'];
+            
+            views.forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+            });
+
+            document.getElementById(viewId).classList.remove('hidden');
+        };
+
+        // Event Handlers for new buttons
+        document.getElementById('guest-view-btn').addEventListener('click', () => {
+            switchView('table-container');
+        });
+
+        document.getElementById('pivot-view-btn').addEventListener('click', () => {
+            switchView('pivot-table-container');
+        });
+
+        document.getElementById('toggle-outline-btn').addEventListener('click', () => {
+            switchView('outline-container');
+        });
+        
         // Fetch guests from Firestore
         const fetchGuests = () => {
             const guestsCollectionPath = `/artifacts/${appId}/public/data/guests`;
             const guestsQuery = query(collection(db, guestsCollectionPath));
             const guestsTableBody = document.getElementById('guests-table-body');
-            const tableContainer = document.getElementById('table-container');
-
+            
             onSnapshot(guestsQuery, (snapshot) => {
-                tableContainer.classList.remove('hidden');
+                // Always default to Guest List view after data refresh
+                switchView('table-container'); 
+                
                 guestsTableBody.innerHTML = ''; // Clear existing rows
 
                 let totalGroupSize = 0;
@@ -452,7 +577,7 @@
                     guestsTableBody.appendChild(totalRow);
                 }
 
-                // Call the new function to populate the pivot table
+                // Call the summary and outline generation functions
                 fetchTableSummary(guests);
 
             }, (error) => {
@@ -461,29 +586,24 @@
             });
         };
         
-        // Toggle view button logic
-        document.getElementById('toggle-view-btn').addEventListener('click', () => {
-            const guestTable = document.getElementById('table-container');
-            const pivotTable = document.getElementById('pivot-table-container');
-            const button = document.getElementById('toggle-view-btn');
-
-            if (guestTable.classList.contains('hidden')) {
-                guestTable.classList.remove('hidden');
-                pivotTable.classList.add('hidden');
-                button.textContent = 'Switch to Pivot View';
-            } else {
-                guestTable.classList.add('hidden');
-                pivotTable.classList.remove('hidden');
-                button.textContent = 'Switch to Guest List';
-            }
-        });
-
     </script>
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #f0f4f8; }
-        .container { max-width: 600px; }
+        .container { max-width: 1200px; } /* Wider for the outline view */
         .section-box { background-color: #ffffff; border-radius: 1rem; box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1); }
         .input-field { border: 1px solid #cbd5e1; padding: 0.75rem 1rem; border-radius: 0.5rem; }
+        /* Unified Button Style */
+        .unified-btn { 
+            background-color: #4f46e5; /* indigo-600 */
+            color: white; 
+            padding: 0.5rem 1rem; 
+            border-radius: 0.375rem; /* rounded-md */
+            font-weight: 500; /* font-medium */
+            transition: background-color 0.15s ease-in-out;
+        }
+        .unified-btn:hover { 
+            background-color: #4338ca; /* indigo-700 */
+        }
         .button-primary { background-color: #3b82f6; color: white; padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-weight: 600; }
         .button-primary:hover { background-color: #2563eb; }
         .loading-spinner {
@@ -522,12 +642,17 @@
 
     <div id="app-content" class="hidden container mx-auto p-8 space-y-8 section-box">
         <div class="flex justify-between items-center mb-4">
-            <h1 class="text-3xl font-bold text-center text-gray-800">Guest List</h1>
-            <button id="toggle-view-btn" class="bg-indigo-500 text-white py-2 px-4 rounded-md hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 text-sm">Switch to Pivot View</button>
+            <h1 class="text-3xl font-bold text-gray-800">Guest Management</h1>
+            <div class="space-x-2">
+                <button id="guest-view-btn" class="unified-btn">Guest List View</button>
+                <button id="pivot-view-btn" class="unified-btn">Table Pivot View</button>
+                <button id="toggle-outline-btn" class="unified-btn">Venue Outline</button>
+            </div>
         </div>
-        <p class="text-gray-600 text-center">This table updates in real-time as new guests are added.</p>
+        <p class="text-gray-600 text-center">Data updates in real-time as guests are managed.</p>
         
         <div id="table-container" class="overflow-x-auto rounded-lg shadow-md border border-gray-200">
+            <h2 class="text-xl font-semibold p-4 bg-white border-b">Guest List</h2>
             <table class="w-full table-auto divide-y divide-gray-200">
                 <thead class="bg-gray-50">
                     <tr>
@@ -546,6 +671,7 @@
         </div>
         
         <div id="pivot-table-container" class="hidden overflow-x-auto rounded-lg shadow-md border border-gray-200">
+            <h2 class="text-xl font-semibold p-4 bg-white border-b">Table Pivot View</h2>
             <table class="w-full table-auto divide-y divide-gray-200">
                 <thead class="bg-gray-50">
                     <tr>
@@ -557,6 +683,22 @@
                     </tbody>
             </table>
         </div>
+
+        <div id="outline-container" class="hidden overflow-x-auto rounded-lg shadow-md border border-gray-200">
+            <h2 class="text-xl font-semibold p-4 bg-white border-b">Venue Layout Outline</h2>
+            <table class="w-full table-fixed border-collapse">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th colspan="2" class="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider border-r border-gray-200">Odd Tables (Left)</th>
+                        <th class="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider border-l border-r border-gray-400">Catwalk</th>
+                        <th colspan="2" class="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider border-l border-gray-200">Even Tables (Right)</th>
+                    </tr>
+                </thead>
+                <tbody id="outline-table-body" class="bg-white divide-y divide-gray-200">
+                    </tbody>
+            </table>
+        </div>
+
     </div>
 </body>
 </html>
