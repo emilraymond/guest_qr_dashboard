@@ -227,7 +227,9 @@
                 
                 guests.forEach(guest => {
                     const listItem = document.createElement('li');
-                    listItem.textContent = guest.guest_id || 'N/A';
+                    // *** MODIFIED LINE: Include group_size in brackets ***
+                    listItem.textContent = `${guest.guest_id || 'N/A'} (${guest.group_size || 0})`;
+                    // *****************************************************
                     guestList.appendChild(listItem);
                 });
 
