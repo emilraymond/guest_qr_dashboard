@@ -29,6 +29,9 @@
         let db, auth;
         const messageBox = document.getElementById('messageBox');
         
+        // Cache for guests organized by table for the pivot view expansion
+        let guestsByTable = new Map();
+
         function showMessage(message, isError = false) {
             messageBox.textContent = message;
             messageBox.className = isError
@@ -186,17 +189,66 @@
                 };
             }
         };
+
+        // Toggles the visibility of the guest list row in the Pivot View
+        const toggleGuestListRow = (event) => {
+            const clickedCell = event.target;
+            const tableNumber = clickedCell.getAttribute('data-table-number');
+            const parentRow = clickedCell.closest('tr');
+            const pivotTableBody = document.getElementById('pivot-table-body');
+            
+            if (!tableNumber || !parentRow) return;
+
+            // Check if the expansion row already exists (and remove it to collapse)
+            const existingExpandedRow = parentRow.nextElementSibling;
+            if (existingExpandedRow && existingExpandedRow.classList.contains('guest-list-row')) {
+                existingExpandedRow.remove();
+                return;
+            }
+
+            // Collapse any other open rows
+            const allExpandedRows = pivotTableBody.querySelectorAll('.guest-list-row');
+            allExpandedRows.forEach(row => row.remove());
+            
+            // Get guests for the clicked table
+            const guests = guestsByTable.get(parseInt(tableNumber)) || [];
+            
+            // Create the new expanded row
+            const newRow = document.createElement('tr');
+            newRow.className = 'guest-list-row bg-gray-100';
+
+            const cell = document.createElement('td');
+            cell.colSpan = 2; // Span across all columns
+            cell.className = 'p-3 text-sm text-gray-700';
+
+            if (guests.length > 0) {
+                const guestList = document.createElement('ul');
+                guestList.className = 'list-disc list-inside space-y-1 ml-4';
+                
+                guests.forEach(guest => {
+                    const listItem = document.createElement('li');
+                    listItem.textContent = guest.guest_id || 'N/A';
+                    guestList.appendChild(listItem);
+                });
+
+                cell.appendChild(guestList);
+            } else {
+                cell.textContent = 'No guests listed for this table.';
+            }
+
+            newRow.appendChild(cell);
+            
+            // Insert the new row right after the clicked table row
+            parentRow.after(newRow);
+        };
         
         // This function builds and populates the pivot table
         const fetchTableSummary = (guests) => {
             const pivotTableBody = document.getElementById('pivot-table-body');
             pivotTableBody.innerHTML = '';
             
-            if (guests.length === 0) {
-                pivotTableBody.innerHTML = '<tr><td colspan="2" class="p-3 text-sm text-center text-gray-500">No table data available.</td></tr>';
-                return;
-            }
-
+            // Reset and rebuild the cache of guests by table
+            guestsByTable = new Map();
             const tableSummary = new Map();
 
             guests.forEach(guest => {
@@ -205,8 +257,19 @@
                 if (tableNumber) {
                     const currentCount = tableSummary.get(tableNumber) || 0;
                     tableSummary.set(tableNumber, currentCount + (groupSize || 0));
+
+                    // Populate the guestsByTable cache
+                    if (!guestsByTable.has(tableNumber)) {
+                        guestsByTable.set(tableNumber, []);
+                    }
+                    guestsByTable.get(tableNumber).push(guest);
                 }
             });
+
+            if (tableSummary.size === 0) {
+                pivotTableBody.innerHTML = '<tr><td colspan="2" class="p-3 text-sm text-center text-gray-500">No table data available.</td></tr>';
+                return;
+            }
 
             const sortedTables = Array.from(tableSummary.keys()).sort((a, b) => a - b);
             
@@ -215,8 +278,10 @@
                 row.className = 'border-b border-gray-200 hover:bg-gray-50';
 
                 const tableNumCell = document.createElement('td');
-                tableNumCell.className = 'p-4 text-sm font-medium text-gray-700 whitespace-nowrap';
+                tableNumCell.className = 'p-4 text-sm font-medium text-gray-700 whitespace-nowrap cursor-pointer hover:bg-gray-100 hover:text-blue-600';
                 tableNumCell.textContent = `Table ${tableNumber}`;
+                tableNumCell.setAttribute('data-table-number', tableNumber);
+                tableNumCell.onclick = toggleGuestListRow; // Add the click handler
                 row.appendChild(tableNumCell);
                 
                 const guestCountCell = document.createElement('td');
